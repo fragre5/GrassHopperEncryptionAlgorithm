@@ -12,7 +12,7 @@ from core.grasshopper_encryption import (
 class FileEncryptionHandler:
     """
     Класс для обработки файлов: чтение исходного текста, запись зашифрованного/дешифрованного текста,
-    а также сохранение метаданных.
+    а также сохранение метаданных и итогового результата.
     """
     def __init__(self, master_key: bytes):
         self.master_key = master_key
@@ -34,15 +34,32 @@ class FileEncryptionHandler:
         with open(path, 'w', encoding='utf-8') as f:
             f.write(metadata)
 
+    def write_result_file(self, original_text: str, encrypted: bytes, metadata: str, result_path: str = "resources/result.txt"):
+        """
+        Сохраняет итоговый файл result.txt, содержащий:
+          1) Исходный текст,
+          2) Зашифрованный текст (в виде hex),
+          3) Метаданные (весь содержимое файла metadata.txt).
+        """
+        os.makedirs(os.path.dirname(result_path), exist_ok=True)
+        with open(result_path, "w", encoding="utf-8") as f:
+            f.write("Исходный текст:\n")
+            f.write(original_text + "\n\n")
+            f.write("Зашифрованный текст (в hex):\n")
+            f.write(encrypted.hex().upper() + "\n\n")
+            f.write("Метаданные:\n")
+            f.write(metadata)
+
     def process_file_encryption(self, input_path: str, encrypted_path: str, decrypted_path: str):
         """
         Читает исходный текст из input_path, шифрует его, записывает зашифрованное сообщение
         в encrypted_path, затем дешифрует для проверки корректности и записывает результат в decrypted_path.
-        Также сохраняет сгенерированные S-блоки и раундовые ключи.
+        Также сохраняет сгенерированные S-блоки, раундовые ключи и итоговый результат в result.txt.
         """
         # Чтение исходного файла и дополнение до кратного размера блока
         plaintext_bytes = self.read_input_file(input_path)
         padded = pad(plaintext_bytes)
+        original_text = plaintext_bytes.decode("utf-8")
 
         # Генерация S-блоков (π₀ и π₁) на основе мастер-ключа
         s_box, inv_s_box = generate_sboxes(self.master_key)
@@ -66,7 +83,7 @@ class FileEncryptionHandler:
         decrypted_text = decrypted.decode('utf-8')
         self.write_output_file(decrypted_path, decrypted_text.encode('utf-8'), mode='wb')
 
-        # Сохранение метаданных: S-блоки и раундовые ключи
+        # Формирование метаданных: S-блоки и раундовые ключи
         metadata = "S-box π0:\n" + " ".join(f"{b:02X}" for b in s_box) + "\n\n"
         metadata += "S-box π1 (обратный):\n" + " ".join(f"{b:02X}" for b in inv_s_box) + "\n\n"
         metadata += "Раундовые ключи:\n"
@@ -74,7 +91,11 @@ class FileEncryptionHandler:
             metadata += f"Key {i}: {key.hex().upper()}\n"
         self.write_metadata(metadata)
 
+        # Запись итогового файла с результатами, включающего все метаданные
+        self.write_result_file(original_text, encrypted, metadata)
+
         print("Шифрование и дешифрование завершены.")
         print(f"Зашифрованный файл: {os.path.abspath(encrypted_path)}")
         print(f"Дешифрованный файл: {os.path.abspath(decrypted_path)}")
-        print("Метаданные сохранены в metadata.txt")
+        print("Метаданные сохранены в resources/metadata.txt")
+        print("Итоговый файл сохранён в resources/result.txt")
